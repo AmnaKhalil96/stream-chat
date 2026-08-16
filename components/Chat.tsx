@@ -10,13 +10,24 @@ import {
   type WheelEvent,
 } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type TextUIPart, type UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
+import type { ChatTools } from "@/lib/ai/tools";
+import { ToolInputAvailable, ToolInputStreaming } from "@/components/tools/ToolInput";
+import { LeadScoreCard } from "@/components/tools/LeadScoreCard";
+import { ToolError } from "@/components/tools/ToolError";
 
-function messageText(parts: UIMessage["parts"]): string {
-  return parts
-    .filter((part): part is TextUIPart => part.type === "text")
-    .map((part) => part.text)
-    .join("");
+// Extends the base UIMessage with the analyzeLead tool's typed input/output,
+// so every `part.type === "tool-analyzeLead"` branch below is narrowed to
+// the tool's real input/output types instead of `unknown`.
+type ChatMessage = UIMessage<unknown, Record<string, unknown>, ChatTools>;
+
+// Whether a message has anything worth rendering yet — plain text or a tool
+// part. A message can have parts (e.g. a `step-start` marker) before it has
+// anything visible, so this is stricter than `parts.length > 0`.
+function hasVisibleContent(parts: ChatMessage["parts"]): boolean {
+  return parts.some(
+    (part) => (part.type === "text" && part.text.length > 0) || part.type === "tool-analyzeLead"
+  );
 }
 
 // How close to the bottom (in px) still counts as "at the bottom". A small
@@ -41,7 +52,7 @@ function ThinkingIndicator() {
 
 export default function Chat() {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status, stop } = useChat({
+  const { messages, sendMessage, status, stop } = useChat<ChatMessage>({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
 
@@ -138,9 +149,8 @@ export default function Chat() {
   // indicator swaps cleanly into the real text the moment it appears
   // instead of racing a separate timer.
   const lastMessage = messages[messages.length - 1];
-  const lastMessageText = lastMessage ? messageText(lastMessage.parts) : "";
   const isThinking =
-    isBusy && (lastMessage?.role !== "assistant" || lastMessageText.length === 0);
+    isBusy && (lastMessage?.role !== "assistant" || !hasVisibleContent(lastMessage.parts));
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -178,30 +188,54 @@ export default function Chat() {
           )}
 
           {messages.map((message) => {
-            const text = messageText(message.parts);
             const isUser = message.role === "user";
 
             // The in-progress assistant message is rendered by the thinking
             // indicator / streaming bubble below instead, so it doesn't
             // briefly show up here as an empty bubble.
-            if (message.id === lastMessage?.id && !isUser && text.length === 0) {
+            if (message.id === lastMessage?.id && !isUser && !hasVisibleContent(message.parts)) {
               return null;
             }
 
             return (
               <div
                 key={message.id}
-                className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                className={`flex flex-col gap-2 ${isUser ? "items-end" : "items-start"}`}
               >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap sm:max-w-[75%] ${
-                    isUser
-                      ? "bg-blue-600 text-white"
-                      : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
-                  }`}
-                >
-                  {text}
-                </div>
+                {message.parts.map((part, index) => {
+                  if (part.type === "text") {
+                    if (!part.text) return null;
+                    return (
+                      <div
+                        key={index}
+                        className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap sm:max-w-[75%] ${
+                          isUser
+                            ? "bg-blue-600 text-white"
+                            : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
+                        }`}
+                      >
+                        {part.text}
+                      </div>
+                    );
+                  }
+
+                  if (part.type === "tool-analyzeLead") {
+                    switch (part.state) {
+                      case "input-streaming":
+                        return <ToolInputStreaming key={part.toolCallId} input={part.input} />;
+                      case "input-available":
+                        return <ToolInputAvailable key={part.toolCallId} input={part.input} />;
+                      case "output-available":
+                        return <LeadScoreCard key={part.toolCallId} result={part.output} />;
+                      case "output-error":
+                        return <ToolError key={part.toolCallId} message={part.errorText} />;
+                      default:
+                        return null;
+                    }
+                  }
+
+                  return null;
+                })}
               </div>
             );
           })}
