@@ -41,3 +41,61 @@ body {
 .tool-state-transition {
   animation: tool-state-in 200ms ease-out;
 }
+
+/* FE-AA1 motion buttons (components/motion/MotionButton.tsx). Content
+   cross-fades in on every state change (idle/loading/success/error) via a
+   `key`-driven remount, same technique as .tool-state-transition above.
+   The "-error" variant layers a single short shake on top so it can't
+   fight the base fade/slide animation for the `animation` shorthand. */
+@keyframes motion-button-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Decreasing-amplitude horizontal shake — plays once per re-entry into the
+   error state (see MotionButton's `key={state}` remount), not on a loop. */
+@keyframes motion-button-shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+
+.motion-button-content-in {
+  animation: motion-button-content-in 220ms ease-out;
+}
+
+.motion-button-content-in-error {
+  animation:
+    motion-button-content-in 220ms ease-out,
+    motion-button-shake 400ms ease-in-out;
+}
+
+/* The shake (and the fade/slide's transform component) are decorative —
+   drop them under reduced motion while leaving the state itself (color,
+   icon, text) fully intact, since that's what actually communicates state. */
+@media (prefers-reduced-motion: reduce) {
+  .motion-button-content-in,
+  .motion-button-content-in-error {
+    animation: none;
+  }
+}
