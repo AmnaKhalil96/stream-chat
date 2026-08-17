@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type MouseEvent,
   type TouchEvent,
   type UIEvent,
   type WheelEvent,
@@ -35,16 +36,108 @@ function hasVisibleContent(parts: ChatMessage["parts"]): boolean {
 // off by a fraction of a pixel due to browser subpixel rounding.
 const BOTTOM_THRESHOLD_PX = 64;
 
+// Pending state: not just a spinner. The skeleton lines below the "Thinking"
+// label approximate the size/shape of an incoming text response so that
+// real content replacing it causes minimal layout shift.
 function ThinkingIndicator() {
   return (
     <div className="flex justify-start">
-      <div className="flex items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-        <span>Thinking</span>
-        <span className="flex gap-0.5">
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" />
-        </span>
+      <div className="flex max-w-[85%] flex-col gap-2.5 rounded-2xl bg-zinc-100 px-4 py-3 sm:max-w-[75%] dark:bg-zinc-800">
+        <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+          <span>Thinking</span>
+          <span className="flex gap-0.5">
+            <span className="h-1 w-1 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
+            <span className="h-1 w-1 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
+            <span className="h-1 w-1 animate-bounce rounded-full bg-current" />
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="h-2.5 w-44 animate-pulse rounded-full bg-zinc-300/70 dark:bg-zinc-700/70" />
+          <span className="h-2.5 w-56 animate-pulse rounded-full bg-zinc-300/70 dark:bg-zinc-700/70" />
+          <span className="h-2.5 w-32 animate-pulse rounded-full bg-zinc-300/70 dark:bg-zinc-700/70" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// output-error at the chat level (not a tool error): the whole assistant
+// response failed. Answers "what went wrong?" distinctly from a tool error —
+// no raw error text, just a safe explanation plus a Retry action.
+function ChatErrorNotice({
+  onRetry,
+  isRetrying,
+  disabled,
+}: {
+  onRetry: (event: MouseEvent<HTMLButtonElement>) => void;
+  isRetrying: boolean;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex justify-start" role="alert">
+      <div className="flex max-w-[85%] flex-col gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm sm:max-w-[75%] dark:border-red-900/60 dark:bg-red-950/30">
+        <div className="flex items-center gap-2 font-medium text-red-700 dark:text-red-400">
+          <svg
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="h-4 w-4 shrink-0"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.63-1.516 2.63H3.72c-1.347 0-2.189-1.463-1.516-2.63L8.485 2.495ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span>Response couldn&apos;t be completed</span>
+        </div>
+        <p className="text-red-600 dark:text-red-300/90">
+          Something interrupted the AI response. You can retry the failed response without
+          resending the whole conversation.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={disabled}
+          className="self-start rounded-full bg-red-600 px-4 py-1.5 text-xs font-medium text-white transition-opacity disabled:opacity-50 dark:bg-red-500"
+        >
+          {isRetrying ? "Retrying…" : "Retry"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const EXAMPLE_PROMPTS = [
+  "Explain React Server Components simply.",
+  "Help me debug a TypeScript error.",
+  "Explain this code step by step.",
+];
+
+// First-run empty state: onboarding, not an error. Clicking an example fills
+// the input (via onSelectPrompt) without sending it.
+function EmptyState({ onSelectPrompt }: { onSelectPrompt: (prompt: string) => void }) {
+  return (
+    <div className="flex min-h-full flex-col items-center justify-center gap-5 px-4 py-8 text-center">
+      <div className="flex flex-col gap-1.5">
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          Start a conversation
+        </h2>
+        <p className="max-w-xs text-sm text-zinc-500 dark:text-zinc-400">
+          Ask anything, or try one of these to see what this chat can do.
+        </p>
+      </div>
+      <div className="flex w-full max-w-sm flex-col gap-2">
+        {EXAMPLE_PROMPTS.map((prompt) => (
+          <button
+            key={prompt}
+            type="button"
+            onClick={() => onSelectPrompt(prompt)}
+            className="rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-left text-sm text-zinc-700 transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-blue-800 dark:hover:bg-blue-950/40"
+          >
+            {prompt}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -52,11 +145,47 @@ function ThinkingIndicator() {
 
 export default function Chat() {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status, stop } = useChat<ChatMessage>({
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { messages, sendMessage, status, stop, error, regenerate } = useChat<ChatMessage>({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
 
   const isBusy = status === "submitted" || status === "streaming";
+
+  // Guards against a double-click firing `regenerate()` twice: the ref is
+  // checked synchronously (no render lag), the state drives the button's
+  // visible "Retrying…" label and disabled attribute.
+  const isRetryingRef = useRef(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  async function handleRetry(event: MouseEvent<HTMLButtonElement>) {
+    if (isRetryingRef.current || isBusy) return;
+    isRetryingRef.current = true;
+    // Disable the actual DOM button synchronously, before any state update
+    // or await: React re-renders (and the `disabled` prop) land a tick
+    // later, which leaves a window where two clicks fired in the same
+    // synchronous burst can both pass the ref/state checks. A disabled
+    // button doesn't dispatch further click events at all (per the HTML
+    // spec), so this closes that race outright rather than racing it.
+    const button = event.currentTarget;
+    button.disabled = true;
+    setIsRetrying(true);
+    try {
+      // Regenerates the last assistant message in place — it does not send
+      // a new user message and does not leave a duplicate assistant message
+      // behind, unlike calling sendMessage() again with the same text.
+      await regenerate();
+    } finally {
+      isRetryingRef.current = false;
+      button.disabled = false;
+      setIsRetrying(false);
+    }
+  }
+
+  function handleSelectPrompt(prompt: string) {
+    setInput(prompt);
+    inputRef.current?.focus();
+  }
 
   // "Following" = the viewport should keep pinning to the bottom as new
   // content arrives. A ref (checked inside the scroll effect, not a
@@ -179,12 +308,10 @@ export default function Chat() {
           onWheel={handleWheel}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
-          className="absolute inset-0 space-y-4 overflow-y-auto px-4 py-4"
+          className="absolute inset-0 space-y-4 overflow-y-auto overscroll-y-contain px-4 py-4"
         >
           {messages.length === 0 && !isBusy && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Send a message to start the conversation.
-            </p>
+            <EmptyState onSelectPrompt={handleSelectPrompt} />
           )}
 
           {messages.map((message) => {
@@ -242,10 +369,12 @@ export default function Chat() {
 
           {isThinking && <ThinkingIndicator />}
 
-          {status === "error" && (
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-              Something went wrong. Please try again.
-            </p>
+          {error && (
+            <ChatErrorNotice
+              onRetry={handleRetry}
+              isRetrying={isRetrying}
+              disabled={isRetrying || isBusy}
+            />
           )}
         </div>
 
@@ -264,9 +393,10 @@ export default function Chat() {
 
       <form
         onSubmit={handleSubmit}
-        className="flex gap-2 border-t border-zinc-200 px-4 py-4 dark:border-zinc-800"
+        className="flex gap-2 border-t border-zinc-200 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-zinc-800"
       >
         <input
+          ref={inputRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder="Type a message..."
