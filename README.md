@@ -58,6 +58,20 @@ Both types are inferred from `leadInputSchema`/hand-written in `lib/ai/tools.ts`
 
 Each state transition applies a 200ms fade/slide-in (`.tool-state-transition` in `app/globals.css`) so the swap between states reads as intentional rather than a layout jump.
 
+## Testing
+
+```bash
+npm run test        # Vitest, watch mode
+npm run test -- --run  # Vitest, single run
+npm run test:e2e    # Playwright end-to-end
+```
+
+**Component tests** (`components/Chat.test.tsx`, `components/tools/LeadScoreCard.test.tsx`) run under Vitest + jsdom + React Testing Library, querying the UI by role/label/text the way a user would — no `data-testid`s or CSS selectors. The AI route is never called for real: `test-utils/mockChatRoute.ts` replaces `window.fetch` so `useChat`'s POST to `/api/chat` resolves with a hand-built `ReadableStream` of the exact AI SDK UI-message-stream SSE events the real route would emit, letting tests assert on real incremental streaming, thinking/error/retry states, and every tool-part lifecycle state (`input-streaming` / `input-available` / `output-available` / `output-error`) without a network call or an API key.
+
+**End-to-end tests** (`e2e/chat-happy-path.spec.ts`) run under Playwright against a real browser and a real Next.js server, intercepting `POST /api/chat` with `page.route()` and fulfilling it with the same deterministic mocked SSE response — so the whole page, form, and streamed rendering are exercised for real, again with no external API call.
+
+CI (`.github/workflows/ci.yml`) runs lint, a TypeScript check, the Vitest suite, the Playwright suite, and a production build on every push and pull request — fully deterministic, with no `GOOGLE_GENERATIVE_AI_API_KEY` required.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
